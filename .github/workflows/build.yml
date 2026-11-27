@@ -1,1 +1,65 @@
+name: Build stepeditor2 IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ldid
+        run: brew install ldid
+
+      - name: Build app
+        run: |
+          xcodebuild -project stepeditor.xcodeproj \
+            -scheme stepeditor \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            IPHONEOS_DEPLOYMENT_TARGET=16.0 \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO
+
+      - name: Sign with Full TrollStore Entitlements
+        run: |
+          APP_PATH=$(find build/Build/Products/Release-iphoneos -name "*.app" | head -n 1)
+          BUNDLE_ID=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$APP_PATH/Info.plist")
+          cat << EOF > entitlements.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://apple.com">
+          <plist version="1.0">
+          <dict>
+            <key>application-identifier</key>
+            <string>0000000000.${BUNDLE_ID}</string>
+            <key>get-task-allow</key>
+            <true/>
+            <key>platform-application</key>
+            <true/>
+            <key>com.apple.developer.healthkit</key>
+            <true/>
+            <key>com.apple.developer.healthkit.access</key>
+            <array/>
+            <key>com.apple.developer.healthkit.background-delivery</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          ldid -Sentitlements.plist "$APP_PATH"
+
+      - name: Package IPA
+        run: |
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/*.app Payload/
+          zip -r stepeditor2.ipa Payload
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: stepeditor2-ipa
+          path: stepeditor2.ipa
 
